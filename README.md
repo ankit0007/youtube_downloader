@@ -1,42 +1,55 @@
-# YouTube Downloader Queue App
+# YouTube Downloader Pro
 
-Simple browser-based app where you can paste YouTube links, add multiple videos to queue, and download them in highest quality by fetching best video and audio streams separately, then merging with ffmpeg.
+Web-based YouTube downloader with queue support, multiple quality selection, and persistent background processing.
 
-## Features
+## Highlights
 
-- Browser UI with URL textbox
-- Add multiple YouTube links into queue
-- Up to 5 concurrent downloads
-- Progress updates and final download button
-- Select video quality before adding to queue (`360p`, `480p`, `720p HD`, `1080p Full HD`, `4K` etc. based on availability)
-- Download mode select: `Video (MP4)`, `Audio (MP3)`
-- Pause, resume, and cancel for active downloads
-- Persistent queue in SQLite (`queue.db`)
-- Duplicate URL is blocked (same video cannot be added repeatedly unless removed)
+- Modern browser UI with quality buttons and queue dashboard
+- Download types: `Video` and `MP3`
+- Real quality list from source metadata (up to available `4K/2K/1080p/720p/...`)
+- Up to `5` concurrent downloads
+- Live progress percentage updates
+- Queue persisted in SQLite (`queue.db`)
+- Same video ID re-download overwrites the existing output file
+- Optional remove behavior: delete queue item only, or queue item + downloaded file
 
-## Run
+## Requirements
 
-1. Install dependencies:
+- Node.js 18+ (recommended)
+- Internet connection
 
-   ```bash
-   npm install
-   ```
+## Quick Start
 
-2. Start app:
+```bash
+npm install
+npm start
+```
 
-   ```bash
-   npm start
-   ```
+Open:
 
-3. Open in browser:
+```text
+http://localhost:3000
+```
 
-   ```text
-   http://localhost:3000
-   ```
+## How It Works
 
-## Notes
+1. Paste a YouTube URL.
+2. Click `Load Options`.
+3. Choose a quality button (video) or `Audio MP3`.
+4. Item is added to queue and processed server-side.
 
-- Downloads are saved in `downloads/` directory.
-- Temporary chunk files are saved in `downloads/temp` and cleaned automatically.
-- Queue state survives server restarts using SQLite database `queue.db`.
-- Download processing is server-side; browser close karne ke baad bhi downloads continue hote hain (jab tak server process running ho).
+## Queue Rules
+
+- Duplicate active jobs for same video ID are blocked.
+- Browser close hone par bhi downloads continue hote hain (server process running hona chahiye).
+- Remove button asks whether to also delete the associated file from disk.
+
+## Output Files
+
+- Download folder: `downloads/`
+- Video filename: `<videoId>.<ext>` (usually `.mp4`)
+- MP3 filename: `<videoId>.mp3`
+
+## Disclaimer
+
+Use this tool responsibly and follow YouTube Terms of Service and applicable copyright laws.

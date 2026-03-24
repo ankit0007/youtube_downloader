@@ -1,7 +1,6 @@
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
-const { spawn } = require("child_process");
 const sqlite3 = require("sqlite3").verbose();
 const ytdl = require("@distube/ytdl-core");
 const ffmpegPath = require("ffmpeg-static");
@@ -12,9 +11,7 @@ const PORT = process.env.PORT || 3000;
 const MAX_CONCURRENT_DOWNLOADS = 5;
 
 const downloadsDir = path.join(__dirname, "downloads");
-const tempDir = path.join(downloadsDir, "temp");
 if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir, { recursive: true });
-if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
 const db = new sqlite3.Database(path.join(__dirname, "queue.db"));
 
@@ -72,20 +69,6 @@ function getVideoIdFromUrl(url) {
   }
 }
 
-function chooseVideoByPreference(formats, preferredHeight) {
-  const sorted = [...formats].sort((a, b) => (b.height || 0) - (a.height || 0));
-  if (sorted.length === 0) return null;
-  if (!preferredHeight) return sorted[0];
-
-  const exact = sorted.find((f) => Number(f.height) === preferredHeight);
-  if (exact) return exact;
-
-  const lowerOrEqual = sorted.find((f) => Number(f.height || 0) <= preferredHeight);
-  if (lowerOrEqual) return lowerOrEqual;
-
-  return sorted[sorted.length - 1];
-}
-
 function qualityLabel(height) {
   if (height >= 4320) return `${height}p (8K)`;
   if (height >= 2160) return `${height}p (4K / Ultra HD)`;
@@ -111,41 +94,6 @@ function buildQualityOptionsFromMetadata(metadata) {
     .map((height) => ({ value: String(height), label: qualityLabel(height) }));
 
   return [{ value: "best", label: "Best available (Auto)" }, ...options];
-}
-
-function tryChooseFormat(formats, quality) {
-  try {
-    if (!Array.isArray(formats) || formats.length === 0) return null;
-    return ytdl.chooseFormat(formats, { quality });
-  } catch (_err) {
-    return null;
-  }
-}
-
-async function getInfoWithFallback(url) {
-  const attempts = [
-    { playerClients: ["ANDROID", "IOS", "TVHTML5_SIMPLY_EMBEDDED_PLAYER"] },
-    { playerClients: ["WEB", "IOS", "ANDROID"] },
-    {}
-  ];
-
-  let lastError = null;
-  for (const options of attempts) {
-    try {
-      const info = await ytdl.getInfo(url, options);
-      if (info && Array.isArray(info.formats) && info.formats.length > 0) {
-        return info;
-      }
-    } catch (err) {
-      lastError = err;
-    }
-  }
-
-  const error = new Error(
-    "Video formats unavailable. Try another video or retry after some time."
-  );
-  error.cause = lastError;
-  throw error;
 }
 
 async function getVideoMetadataWithYtDlp(url) {
@@ -275,11 +223,6 @@ async function refreshQueueFromDb() {
 function getNextQueueItems(limit) {
   const activeIds = new Set(Array.from(activeTasks.keys()));
   return queue.filter((item) => item.status === "queued" && !activeIds.has(item.id)).slice(0, limit);
-}
-
-function cleanupTempFiles(videoPath, audioPath) {
-  if (videoPath && fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
-  if (audioPath && fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
 }
 
 function shouldUseYtDlpFallback(error) {
@@ -432,74 +375,9 @@ async function downloadVideoWithYtDlp(item, task, safeVideoId, preferredHeight) 
   await persistItem(item);
 }
 
-async function downloadStreamToFile({
-  info,
-  format,
-  outputPath,
-  onProgress,
-  registerStream
-}) {
-  return new Promise((resolve, reject) => {
-    const stream = ytdl.downloadFromInfo(info, { format });
-    const fileWriteStream = fs.createWriteStream(outputPath);
-
-    registerStream(stream);
-
-    stream.on("progress", (_chunkLength, downloaded, total) => {
-      if (total > 0) onProgress(downloaded, total);
-    });
-    stream.on("error", (err) => reject(err));
-    fileWriteStream.on("error", (err) => reject(err));
-    fileWriteStream.on("finish", () => resolve());
-    stream.pipe(fileWriteStream);
-  });
-}
-
-async function mergeWithFfmpeg(videoPath, audioPath, outputPath, item, task) {
-  if (!ffmpegPath) {
-    throw new Error("ffmpeg not found. Install/resolve ffmpeg-static.");
-  }
-
-  item.status = "merging";
-  item.message = "Merging best video + audio...";
-  item.progress = Math.max(item.progress, 90);
-  await persistItem(item);
-
-  return new Promise((resolve, reject) => {
-    const ffmpeg = spawn(ffmpegPath, [
-      "-y",
-      "-i",
-      videoPath,
-      "-i",
-      audioPath,
-      "-c:v",
-      "copy",
-      "-c:a",
-      "aac",
-      outputPath
-    ]);
-
-    task.ffmpegProcess = ffmpeg;
-    ffmpeg.on("error", (err) => reject(err));
-    ffmpeg.on("close", (code) => {
-      task.ffmpegProcess = null;
-      if (code !== 0) {
-        return reject(new Error(`ffmpeg exited with code ${code}`));
-      }
-      item.progress = 100;
-      return resolve();
-    });
-  });
-}
-
 async function processQueueItem(item) {
-  let videoTempPath = "";
-  let audioTempPath = "";
   const task = {
     itemId: item.id,
-    videoStream: null,
-    audioStream: null,
-    ffmpegProcess: null,
     ytDlpProcess: null,
     canceled: false,
     paused: false
@@ -518,9 +396,6 @@ async function processQueueItem(item) {
     item.videoId = metadata?.id || item.videoId || getVideoIdFromUrl(item.url) || "";
 
     const safeVideoId = sanitizeFileName(item.videoId || "unknown_video_id");
-    const outputFilename = `${safeVideoId}.mp4`;
-    const outputPath = path.join(downloadsDir, outputFilename);
-
     item.title = metadata?.title || item.title;
     item.message = "Preparing download streams...";
     item.progress = 1;
@@ -575,7 +450,6 @@ async function processQueueItem(item) {
       }
     }
   } finally {
-    cleanupTempFiles(videoTempPath, audioTempPath);
     activeTasks.delete(item.id);
     await refreshQueueFromDb();
     scheduleQueueProcessing();
@@ -669,52 +543,17 @@ app.post("/api/queue/:id/action", async (req, res) => {
   }
 
   if (action === "pause") {
-    const task = activeTasks.get(id);
-    if (!task) {
-      return res.status(400).json({ error: "Only current download can be paused." });
-    }
-    if (item.status === "merging") {
-      return res.status(400).json({ error: "Pause during merge is not supported." });
-    }
-    if (task.videoStream) task.videoStream.pause();
-    if (task.audioStream) task.audioStream.pause();
-    task.paused = true;
-    item.status = "paused";
-    item.message = "Paused by user";
-    await persistItem(item);
-    return res.json(item);
+    return res.status(400).json({ error: "Pause is not supported in current download engine." });
   }
 
   if (action === "resume") {
-    const task = activeTasks.get(id);
-    if (item.status === "paused" && task) {
-      if (task.videoStream) task.videoStream.resume();
-      if (task.audioStream) task.audioStream.resume();
-      task.paused = false;
-      item.status = "downloading";
-      item.message = "Resumed...";
-      await persistItem(item);
-      return res.json(item);
-    }
-
-    if (item.status === "paused") {
-      item.status = "queued";
-      item.message = "Resumed to queue";
-      await persistItem(item);
-      scheduleQueueProcessing();
-      return res.json(item);
-    }
-
-    return res.status(400).json({ error: "Only paused item can be resumed." });
+    return res.status(400).json({ error: "Resume is not supported in current download engine." });
   }
 
   if (action === "cancel") {
     const task = activeTasks.get(id);
     if (task) {
       task.canceled = true;
-      if (task.videoStream) task.videoStream.destroy(new Error("Canceled by user"));
-      if (task.audioStream) task.audioStream.destroy(new Error("Canceled by user"));
-      if (task.ffmpegProcess) task.ffmpegProcess.kill("SIGTERM");
       if (task.ytDlpProcess) task.ytDlpProcess.kill("SIGTERM");
     }
     item.status = "cancelled";

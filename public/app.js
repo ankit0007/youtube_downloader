@@ -98,10 +98,6 @@ function statusLabel(status) {
       return "Queued";
     case "downloading":
       return "Downloading";
-    case "paused":
-      return "Paused";
-    case "merging":
-      return "Merging";
     case "completed":
       return "Completed";
     case "cancelled":
@@ -189,36 +185,6 @@ function createQueueItem(item) {
   }
 
   if (item.status === "downloading") {
-    const pauseBtn = document.createElement("button");
-    pauseBtn.className = "btn btn-pause";
-    pauseBtn.textContent = "Pause";
-    pauseBtn.onclick = async () => {
-      try {
-        await queueAction(item.id, "pause");
-        await refreshQueue();
-      } catch (err) {
-        statusText.textContent = err.message;
-      }
-    };
-    actions.appendChild(pauseBtn);
-  }
-
-  if (item.status === "paused") {
-    const resumeBtn = document.createElement("button");
-    resumeBtn.className = "btn btn-resume";
-    resumeBtn.textContent = "Resume";
-    resumeBtn.onclick = async () => {
-      try {
-        await queueAction(item.id, "resume");
-        await refreshQueue();
-      } catch (err) {
-        statusText.textContent = err.message;
-      }
-    };
-    actions.appendChild(resumeBtn);
-  }
-
-  if (item.status === "downloading" || item.status === "paused" || item.status === "merging") {
     const cancelBtn = document.createElement("button");
     cancelBtn.className = "btn btn-cancel";
     cancelBtn.textContent = "Cancel";

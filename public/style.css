@@ -169,16 +169,6 @@ p {
   text-decoration: none;
 }
 
-.btn-pause {
-  background: #ffe5a4;
-  color: #5d4106;
-}
-
-.btn-resume {
-  background: #d0e4ff;
-  color: #08367a;
-}
-
 .btn-cancel {
   background: #f5b5b5;
   color: #7a0c0c;
