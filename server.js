@@ -22,6 +22,16 @@ app.use("/downloads", express.static(downloadsDir));
 let queue = [];
 const activeTasks = new Map();
 
+function withYtDlpDefaults(options = {}) {
+  return {
+    noPlaylist: true,
+    noWarnings: true,
+    // Force JS runtime for YouTube extraction compatibility.
+    jsRuntimes: "node",
+    ...options
+  };
+}
+
 function runDb(sql, params = []) {
   return new Promise((resolve, reject) => {
     db.run(sql, params, function onRun(err) {
@@ -104,12 +114,13 @@ function buildQualityOptionsFromMetadata(metadata) {
 
 async function getVideoMetadataWithYtDlp(url) {
   return new Promise((resolve, reject) => {
-    const child = ytDlp.exec(url, {
-      dumpSingleJson: true,
-      noWarnings: true,
-      noPlaylist: true,
-      skipDownload: true
-    });
+    const child = ytDlp.exec(
+      url,
+      withYtDlpDefaults({
+        dumpSingleJson: true,
+        skipDownload: true
+      })
+    );
 
     let stdoutData = "";
     let stderrData = "";
@@ -272,7 +283,7 @@ async function runYtDlpWithProgress(item, task, ytdlpOptions, progressConfig) {
   await persistItem(item);
 
   await new Promise((resolve, reject) => {
-    const child = ytDlp.exec(item.url, ytdlpOptions);
+    const child = ytDlp.exec(item.url, withYtDlpDefaults(ytdlpOptions));
     task.ytDlpProcess = child;
 
     const onChunk = (chunk) => {
