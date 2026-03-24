@@ -49,6 +49,45 @@ h2 {
   background: #2359ca;
 }
 
+.secondary-btn {
+  background: #60738a;
+}
+
+.secondary-btn:hover {
+  background: #4f6074;
+}
+
+.option-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.option-btn {
+  padding: 8px 12px;
+  border: 1px solid #cfd8e6;
+  border-radius: 999px;
+  background: #f2f6ff;
+  color: #1d3f7a;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.option-btn:hover {
+  background: #e3ecff;
+}
+
+.option-btn.mp3 {
+  background: #e6f8eb;
+  color: #1a6a34;
+}
+
+.option-btn.subtitle {
+  background: #fff4e0;
+  color: #7a4a00;
+}
+
 .status-text {
   min-height: 24px;
   color: #184db8;

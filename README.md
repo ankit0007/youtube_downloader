@@ -6,10 +6,13 @@ Simple browser-based app where you can paste YouTube links, add multiple videos 
 
 - Browser UI with URL textbox
 - Add multiple YouTube links into queue
-- Automatic one-by-one downloading
+- Up to 5 concurrent downloads
 - Progress updates and final download button
+- Select video quality before adding to queue (`360p`, `480p`, `720p HD`, `1080p Full HD`, `4K` etc. based on availability)
+- Download mode select: `Video (MP4)`, `Audio (MP3)`
 - Pause, resume, and cancel for active downloads
 - Persistent queue in SQLite (`queue.db`)
+- Duplicate URL is blocked (same video cannot be added repeatedly unless removed)
 
 ## Run
 
@@ -36,3 +39,4 @@ Simple browser-based app where you can paste YouTube links, add multiple videos 
 - Downloads are saved in `downloads/` directory.
 - Temporary chunk files are saved in `downloads/temp` and cleaned automatically.
 - Queue state survives server restarts using SQLite database `queue.db`.
+- Download processing is server-side; browser close karne ke baad bhi downloads continue hote hain (jab tak server process running ho).
