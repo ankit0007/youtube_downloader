@@ -10,23 +10,164 @@
     <main class="container">
       <section class="hero-card">
         <h1>YouTube Downloader Pro</h1>
-        <p>Load a YouTube link, pick exact quality, and queue downloads with live progress.</p>
+        <p>Queue YouTube videos with quality control, bulk URLs, or search and pick what to download.</p>
 
-        <form id="queue-form" class="queue-form">
-          <input
-            id="url-input"
-            type="url"
-            placeholder="Paste YouTube URL: https://www.youtube.com/watch?v=..."
-            required
-          />
-          <button id="load-quality-btn" type="button" class="secondary-btn">Load Options</button>
-        </form>
-        <div id="option-buttons" class="option-buttons"></div>
+        <div class="tabs-nav" role="tablist" aria-label="Add to queue">
+          <button
+            type="button"
+            class="tab-btn is-active"
+            role="tab"
+            id="tab-btn-single"
+            aria-selected="true"
+            aria-controls="panel-single"
+            data-tab="single"
+          >
+            One link
+          </button>
+          <button
+            type="button"
+            class="tab-btn"
+            role="tab"
+            id="tab-btn-bulk"
+            aria-selected="false"
+            aria-controls="panel-bulk"
+            data-tab="bulk"
+          >
+            Multiple URLs
+          </button>
+          <button
+            type="button"
+            class="tab-btn"
+            role="tab"
+            id="tab-btn-search"
+            aria-selected="false"
+            aria-controls="panel-search"
+            data-tab="search"
+          >
+            YouTube search
+          </button>
+        </div>
+
+        <div id="panel-single" class="tab-panel is-active" role="tabpanel" aria-labelledby="tab-btn-single">
+          <form id="queue-form" class="queue-form">
+            <input
+              id="url-input"
+              type="url"
+              placeholder="Paste YouTube URL: https://www.youtube.com/watch?v=..."
+              required
+            />
+            <button id="load-quality-btn" type="button" class="secondary-btn">Load Options</button>
+          </form>
+          <div id="option-buttons" class="option-buttons"></div>
+        </div>
+
+        <div id="panel-bulk" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-bulk" hidden>
+          <p class="tab-hint">Paste one YouTube URL per line. Optionally load quality options from the first URL.</p>
+          <label for="bulk-urls-input" class="bulk-label">Multiple URLs (one per line)</label>
+          <textarea
+            id="bulk-urls-input"
+            class="bulk-urls-input"
+            rows="5"
+            placeholder="https://www.youtube.com/watch?v=...&#10;https://youtu.be/..."
+          ></textarea>
+          <div class="bulk-tab-top-actions">
+            <button type="button" id="bulk-load-quality-btn" class="secondary-btn">
+              Load quality options (first URL in list)
+            </button>
+          </div>
+          <div
+            id="bulk-tab-match-options"
+            class="option-buttons bulk-match-options hidden"
+            aria-live="polite"
+          ></div>
+          <div class="bulk-add-actions">
+            <button type="button" id="bulk-queue-video-btn" class="secondary-btn bulk-queue-btn">
+              Queue all · Video (best)
+            </button>
+            <button type="button" id="bulk-queue-mp3-btn" class="secondary-btn bulk-queue-btn bulk-mp3-btn">
+              Queue all · MP3
+            </button>
+          </div>
+        </div>
+
+        <div id="panel-search" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-search" hidden>
+          <p class="tab-hint">Search YouTube, tick videos, then queue them as video (best), MP3, or a chosen quality.</p>
+          <div class="search-row">
+            <input
+              id="search-query-input"
+              type="search"
+              class="search-query-input"
+              placeholder="Search YouTube..."
+              autocomplete="off"
+            />
+            <button type="button" id="search-run-btn" class="secondary-btn">Search</button>
+          </div>
+          <div class="search-filters" role="group" aria-label="Search filters">
+            <label class="search-filter">
+              <span>Duration</span>
+              <select id="search-filter-duration">
+                <option value="">Any</option>
+                <option value="short">Short</option>
+                <option value="medium">Medium</option>
+                <option value="long">Long</option>
+              </select>
+            </label>
+            <label class="search-filter">
+              <span>Upload</span>
+              <select id="search-filter-upload">
+                <option value="">Any</option>
+                <option value="hour">Last hour</option>
+                <option value="today">Today</option>
+                <option value="week">This week</option>
+                <option value="month">This month</option>
+                <option value="year">This year</option>
+              </select>
+            </label>
+            <label class="search-filter">
+              <span>Sort</span>
+              <select id="search-filter-sort">
+                <option value="relevance">Relevance</option>
+                <option value="upload_date">Upload date</option>
+                <option value="view_count">View count</option>
+                <option value="rating">Rating</option>
+              </select>
+            </label>
+          </div>
+          <div class="search-toolbar">
+            <label class="search-select-all-label">
+              <input type="checkbox" id="search-select-all-results" />
+              <span>Select all results</span>
+            </label>
+          </div>
+          <div id="search-results" class="search-results"></div>
+          <div class="search-queue-actions">
+            <button type="button" id="search-queue-video-best" class="secondary-btn">Queue selected · Video (best)</button>
+            <button type="button" id="search-queue-mp3" class="secondary-btn bulk-mp3-btn">Queue selected · MP3</button>
+            <button type="button" id="search-load-quality-btn" class="secondary-btn">Load qualities (first selected)</button>
+          </div>
+          <div id="search-quality-options" class="option-buttons search-quality-options hidden" aria-live="polite"></div>
+        </div>
+
         <p id="status-text" class="status-text"></p>
       </section>
 
       <section class="queue-section">
         <h2>Download Queue</h2>
+        <div class="queue-toolbar" id="queue-toolbar">
+          <label class="toolbar-select-all">
+            <input type="checkbox" id="select-all-queue" />
+            <span>Select all</span>
+          </label>
+          <span id="selection-count" class="selection-count"></span>
+          <button type="button" id="bulk-download-btn" class="toolbar-btn" disabled>
+            <span class="btn-icon">⬇</span>
+            <span>Download selected</span>
+          </button>
+          <button type="button" id="bulk-delete-btn" class="toolbar-btn toolbar-btn-danger" disabled>
+            <span class="btn-icon">🗑</span>
+            <span>Remove selected</span>
+          </button>
+        </div>
         <div id="queue-list" class="queue-list"></div>
       </section>
     </main>

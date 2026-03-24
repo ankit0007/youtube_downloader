@@ -1,3 +1,4 @@
+require("dotenv").config();
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
@@ -16,8 +17,6 @@ if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir, { recursive: true }
 const db = new sqlite3.Database(path.join(__dirname, "queue.db"));
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
-app.use("/downloads", express.static(downloadsDir));
 
 let queue = [];
 const activeTasks = new Map();
@@ -112,6 +111,158 @@ function buildQualityOptionsFromMetadata(metadata) {
   return [{ value: "best", label: "Best available (Auto)" }, ...options];
 }
 
+/** YouTube Media Downloader (DataFanatic) — search uses GET /v2/search/videos */
+const RAPIDAPI_MEDIA_DOWNLOADER_HOST = "youtube-media-downloader.p.rapidapi.com";
+const RAPIDAPI_SEARCH_PATH_DEFAULT = "/v2/search/videos";
+const RAPIDAPI_SEARCH_MAX = 30;
+
+function parseLengthTextToSeconds(text) {
+  if (text == null || text === "") return null;
+  const parts = String(text)
+    .trim()
+    .split(":")
+    .map((p) => parseInt(p, 10));
+  if (parts.some((n) => !Number.isFinite(n))) return null;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 1) return parts[0];
+  return null;
+}
+
+function pickBestThumbnailUrl(thumbnails) {
+  if (!Array.isArray(thumbnails) || thumbnails.length === 0) return "";
+  const best = [...thumbnails].sort(
+    (a, b) => (Number(b.width) || 0) - (Number(a.width) || 0)
+  )[0];
+  return best && best.url ? String(best.url) : "";
+}
+
+function extractSearchResultRows(json) {
+  if (!json || typeof json !== "object") return [];
+  if (Array.isArray(json)) return json;
+  const keys = ["data", "contents", "videos", "items", "results", "result", "searchResults"];
+  for (const k of keys) {
+    if (Array.isArray(json[k])) {
+      const arr = json[k];
+      if (k === "contents") {
+        return arr.map((cell) => cell?.video || cell?.playlist || cell).filter(Boolean);
+      }
+      return arr;
+    }
+  }
+  return [];
+}
+
+function normalizeVideoSearchHit(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const nested = raw.video && typeof raw.video === "object" ? raw.video : null;
+  const base = nested || raw;
+
+  let videoId =
+    base.videoId ||
+    base.id ||
+    (base.id && typeof base.id === "object" ? base.id.videoId : null) ||
+    "";
+  videoId = String(videoId || "").trim();
+  if (!/^[a-zA-Z0-9_-]{11}$/.test(videoId)) return null;
+
+  const title =
+    base.title ||
+    base.videoTitle ||
+    raw.title ||
+    "YouTube video";
+
+  let thumbnailUrl = "";
+  if (typeof base.thumbnail === "string") thumbnailUrl = base.thumbnail;
+  if (!thumbnailUrl && Array.isArray(base.thumbnails)) {
+    thumbnailUrl = pickBestThumbnailUrl(base.thumbnails);
+  }
+  if (!thumbnailUrl && Array.isArray(base.thumbnail)) {
+    thumbnailUrl = pickBestThumbnailUrl(base.thumbnail);
+  }
+
+  const channel =
+    base.channelTitle ||
+    (typeof base.channel === "string" ? base.channel : "") ||
+    (base.channel && base.channel.name) ||
+    base.author ||
+    raw.channelTitle ||
+    "";
+
+  let durationSec = null;
+  if (typeof base.duration === "number" && Number.isFinite(base.duration)) {
+    durationSec = base.duration;
+  }
+  if (durationSec == null) {
+    durationSec =
+      parseLengthTextToSeconds(base.lengthText) ||
+      parseLengthTextToSeconds(typeof base.duration === "string" ? base.duration : "");
+  }
+
+  return {
+    videoId,
+    title,
+    url: `https://www.youtube.com/watch?v=${videoId}`,
+    thumbnailUrl: thumbnailUrl || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
+    channel,
+    durationSec
+  };
+}
+
+async function searchYouTubeRapidApi(query, limit, filters = {}) {
+  const apiKey = process.env.RAPIDAPI_KEY;
+  if (!apiKey || !String(apiKey).trim()) {
+    throw new Error(
+      "RAPIDAPI_KEY is not set. Subscribe to YouTube Media Downloader on RapidAPI, put the key in .env (see README), restart the server."
+    );
+  }
+  const q = String(query || "").trim();
+  if (!q) return [];
+
+  const max = Math.min(Math.max(Number(limit) || 20, 1), RAPIDAPI_SEARCH_MAX);
+
+  const host = String(process.env.RAPIDAPI_HOST || RAPIDAPI_MEDIA_DOWNLOADER_HOST).trim();
+  const pathRaw = String(process.env.RAPIDAPI_SEARCH_PATH || RAPIDAPI_SEARCH_PATH_DEFAULT).trim();
+  const path = pathRaw.startsWith("/") ? pathRaw : `/${pathRaw}`;
+
+  const params = new URLSearchParams();
+  params.set("query", q);
+  if (filters.duration) params.set("duration", String(filters.duration));
+  if (filters.upload_date) params.set("uploadDate", String(filters.upload_date));
+  if (filters.sort_by) params.set("sortBy", String(filters.sort_by));
+
+  const url = `https://${host}${path}?${params.toString()}`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      "x-rapidapi-host": host,
+      "x-rapidapi-key": apiKey.trim()
+    }
+  });
+
+  const rawText = await res.text();
+  let json = {};
+  try {
+    json = rawText ? JSON.parse(rawText) : {};
+  } catch (_err) {
+    throw new Error("RapidAPI returned invalid JSON.");
+  }
+
+  if (!res.ok) {
+    const msg =
+      (typeof json.message === "string" && json.message) ||
+      (typeof json.msg === "string" && json.msg) ||
+      rawText.slice(0, 200) ||
+      `RapidAPI HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+
+  const rows = extractSearchResultRows(json);
+  const results = rows.map((row) => normalizeVideoSearchHit(row)).filter(Boolean);
+  return results.slice(0, max);
+}
+
 async function getVideoMetadataWithYtDlp(url) {
   return new Promise((resolve, reject) => {
     const child = ytDlp.exec(
@@ -151,8 +302,9 @@ async function getVideoMetadataWithYtDlp(url) {
 }
 
 function toItem(row) {
+  const idNum = Number(row.id);
   return {
-    id: row.id,
+    id: Number.isFinite(idNum) ? idNum : row.id,
     url: row.url,
     videoId: row.videoId || "",
     title: row.title || "",
@@ -166,6 +318,87 @@ function toItem(row) {
     message: row.message || "",
     downloadUrl: row.downloadUrl || ""
   };
+}
+
+const MAX_BULK_QUEUE_ADD = 50;
+const MAX_BULK_QUEUE_DELETE = 100;
+
+async function insertQueueItemIfEligible(url, qualityPreference, downloadType) {
+  if (url == null || typeof url !== "string" || !url.trim()) {
+    return { ok: false, error: "Please provide a valid YouTube URL." };
+  }
+  const normalizedUrl = url.trim();
+  if (!ytdl.validateURL(normalizedUrl)) {
+    return { ok: false, error: "Please provide a valid YouTube URL." };
+  }
+  const normalizedQuality = qualityPreference ? String(qualityPreference) : "best";
+  if (normalizedQuality !== "best" && !/^\d+$/.test(normalizedQuality)) {
+    return { ok: false, error: "Invalid quality preference." };
+  }
+  const normalizedDownloadType = normalizeDownloadType(downloadType);
+  const normalizedSubtitleLanguage = "all";
+  const normalizedVideoId = getVideoIdFromUrl(normalizedUrl);
+
+  const existingRows = normalizedVideoId
+    ? await allDb(
+        "SELECT * FROM queue_items WHERE videoId = ? AND downloadType = ? AND qualityPreference = ? AND status IN ('queued','downloading','merging','paused') ORDER BY id DESC LIMIT 1",
+        [normalizedVideoId, normalizedDownloadType, normalizedQuality]
+      )
+    : await allDb(
+        "SELECT * FROM queue_items WHERE url = ? AND downloadType = ? AND qualityPreference = ? AND status IN ('queued','downloading','merging','paused') ORDER BY id DESC LIMIT 1",
+        [normalizedUrl, normalizedDownloadType, normalizedQuality]
+      );
+  if (existingRows.length > 0 && isNonRemovableStatus(existingRows[0].status)) {
+    return {
+      ok: false,
+      code: "duplicate_active",
+      error: "This video is already active in queue.",
+      existingItem: toItem(existingRows[0])
+    };
+  }
+
+  const result = await runDb(
+    "INSERT INTO queue_items (url, videoId, qualityPreference, downloadType, subtitleLanguage, status, progress, message) VALUES (?, ?, ?, ?, ?, 'queued', 0, 'Waiting in queue...')",
+    [normalizedUrl, normalizedVideoId, normalizedQuality, normalizedDownloadType, normalizedSubtitleLanguage]
+  );
+  const rows = await allDb("SELECT * FROM queue_items WHERE id = ?", [result.lastID]);
+  const item = toItem(rows[0]);
+  queue.push(item);
+  return { ok: true, item };
+}
+
+async function deleteQueueItemRow(id, shouldDeleteFile) {
+  const rows = await allDb("SELECT * FROM queue_items WHERE id = ?", [id]);
+  if (!rows.length) return { ok: false, reason: "not_found" };
+  const item = toItem(rows[0]);
+  if (item.status === "downloading" || item.status === "merging") {
+    return { ok: false, reason: "active_download" };
+  }
+  if (shouldDeleteFile && item.filename) {
+    const safeName = path.basename(item.filename);
+    const filePath = path.join(downloadsDir, safeName);
+    if (fs.existsSync(filePath)) {
+      try {
+        fs.unlinkSync(filePath);
+      } catch (err) {
+        return { ok: false, reason: "file_delete_failed", message: err.message };
+      }
+    }
+  }
+  await runDb("DELETE FROM queue_items WHERE id = ?", [id]);
+  return { ok: true };
+}
+
+async function pruneCompletedMissingFiles() {
+  const rows = await allDb(
+    "SELECT id, filename FROM queue_items WHERE status = 'completed' AND filename IS NOT NULL AND filename != ''"
+  );
+  for (const row of rows) {
+    const filePath = path.join(downloadsDir, path.basename(row.filename));
+    if (!fs.existsSync(filePath)) {
+      await runDb("DELETE FROM queue_items WHERE id = ?", [row.id]);
+    }
+  }
 }
 
 async function loadQueue() {
@@ -241,6 +474,7 @@ async function persistItem(item) {
 }
 
 async function refreshQueueFromDb() {
+  await pruneCompletedMissingFiles();
   const rows = await allDb("SELECT * FROM queue_items ORDER BY id DESC");
   queue = rows.map(toItem);
 }
@@ -499,45 +733,53 @@ function scheduleQueueProcessing() {
 app.post("/api/queue", async (req, res) => {
   try {
     const { url, qualityPreference, downloadType } = req.body || {};
-    if (!url || typeof url !== "string" || !ytdl.validateURL(url)) {
-      return res.status(400).json({ error: "Please provide a valid YouTube URL." });
+    const r = await insertQueueItemIfEligible(url, qualityPreference, downloadType);
+    if (!r.ok) {
+      if (r.code === "duplicate_active") {
+        return res.status(409).json({
+          error: r.error || "This video is already active in queue.",
+          existingItem: r.existingItem
+        });
+      }
+      return res.status(400).json({ error: r.error || "Could not add video." });
     }
-    const normalizedQuality = qualityPreference ? String(qualityPreference) : "best";
-    if (normalizedQuality !== "best" && !/^\d+$/.test(normalizedQuality)) {
-      return res.status(400).json({ error: "Invalid quality preference." });
-    }
-    const normalizedDownloadType = normalizeDownloadType(downloadType);
-    const normalizedSubtitleLanguage = "all";
-    const normalizedVideoId = getVideoIdFromUrl(url);
-
-    const normalizedUrl = url.trim();
-    const existingRows = normalizedVideoId
-      ? await allDb(
-          "SELECT * FROM queue_items WHERE videoId = ? AND downloadType = ? AND qualityPreference = ? AND status IN ('queued','downloading','merging','paused') ORDER BY id DESC LIMIT 1",
-          [normalizedVideoId, normalizedDownloadType, normalizedQuality]
-        )
-      : await allDb(
-          "SELECT * FROM queue_items WHERE url = ? AND downloadType = ? AND qualityPreference = ? AND status IN ('queued','downloading','merging','paused') ORDER BY id DESC LIMIT 1",
-          [normalizedUrl, normalizedDownloadType, normalizedQuality]
-        );
-    if (existingRows.length > 0 && isNonRemovableStatus(existingRows[0].status)) {
-      return res.status(409).json({
-        error: "This video is already active in queue.",
-        existingItem: toItem(existingRows[0])
-      });
-    }
-
-    const result = await runDb(
-      "INSERT INTO queue_items (url, videoId, qualityPreference, downloadType, subtitleLanguage, status, progress, message) VALUES (?, ?, ?, ?, ?, 'queued', 0, 'Waiting in queue...')",
-      [normalizedUrl, normalizedVideoId, normalizedQuality, normalizedDownloadType, normalizedSubtitleLanguage]
-    );
-    const rows = await allDb("SELECT * FROM queue_items WHERE id = ?", [result.lastID]);
-    const item = toItem(rows[0]);
-    queue.push(item);
     scheduleQueueProcessing();
-    return res.status(201).json(item);
+    return res.status(201).json(r.item);
   } catch (err) {
     return res.status(500).json({ error: err.message || "Could not add video." });
+  }
+});
+
+app.post("/api/queue/bulk", async (req, res) => {
+  try {
+    const { items: rawItems } = req.body || {};
+    if (!Array.isArray(rawItems) || rawItems.length === 0) {
+      return res.status(400).json({ error: "Provide a non-empty items array." });
+    }
+    if (rawItems.length > MAX_BULK_QUEUE_ADD) {
+      return res.status(400).json({ error: `Too many items (max ${MAX_BULK_QUEUE_ADD} per request).` });
+    }
+    const created = [];
+    const errors = [];
+    for (let i = 0; i < rawItems.length; i++) {
+      const entry = rawItems[i] || {};
+      const r = await insertQueueItemIfEligible(entry.url, entry.qualityPreference, entry.downloadType);
+      if (r.ok) {
+        created.push(r.item);
+      } else {
+        errors.push({
+          index: i,
+          url: typeof entry.url === "string" ? entry.url.trim() : "",
+          error: r.error || "Could not add",
+          code: r.code || "invalid",
+          existingItem: r.existingItem
+        });
+      }
+    }
+    scheduleQueueProcessing();
+    return res.json({ created, errors });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || "Bulk add failed." });
   }
 });
 
@@ -555,6 +797,28 @@ app.post("/api/formats", async (req, res) => {
     });
   } catch (err) {
     return res.status(500).json({ error: err.message || "Could not fetch quality options." });
+  }
+});
+
+app.post("/api/search", async (req, res) => {
+  try {
+    const { q, limit, duration, upload_date, sort_by } = req.body || {};
+    if (q == null || typeof q !== "string" || !q.trim()) {
+      return res.status(400).json({ error: "Please provide a search query." });
+    }
+    const filters = {};
+    if (duration != null && String(duration).trim()) filters.duration = String(duration).trim();
+    if (upload_date != null && String(upload_date).trim()) {
+      filters.upload_date = String(upload_date).trim();
+    }
+    if (sort_by != null && String(sort_by).trim()) filters.sort_by = String(sort_by).trim();
+
+    const results = await searchYouTubeRapidApi(q.trim(), limit, filters);
+    return res.json({ results });
+  } catch (err) {
+    const msg = err.message || "Search failed.";
+    const status = msg.includes("RAPIDAPI_KEY") ? 503 : 500;
+    return res.status(status).json({ error: msg });
   }
 });
 
@@ -596,31 +860,69 @@ app.post("/api/queue/:id/action", async (req, res) => {
   return res.status(400).json({ error: "Unsupported action." });
 });
 
+app.post("/api/queue/bulk-delete", async (req, res) => {
+  try {
+    const { ids, deleteFile } = req.body || {};
+    const shouldDeleteFile = Boolean(deleteFile);
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: "Provide a non-empty ids array." });
+    }
+    if (ids.length > MAX_BULK_QUEUE_DELETE) {
+      return res.status(400).json({ error: `Too many ids (max ${MAX_BULK_QUEUE_DELETE}).` });
+    }
+    const uniqueIds = [
+      ...new Set(
+        ids
+          .map((raw) => {
+            const n = parseInt(String(raw === null || raw === undefined ? "" : raw), 10);
+            return Number.isFinite(n) && n > 0 ? n : null;
+          })
+          .filter((n) => n != null)
+      )
+    ];
+    const removed = [];
+    const skipped = [];
+    for (const id of uniqueIds) {
+      const result = await deleteQueueItemRow(id, shouldDeleteFile);
+      if (result.ok) {
+        removed.push(id);
+      } else {
+        skipped.push({
+          id,
+          reason: result.reason,
+          message: result.message
+        });
+      }
+    }
+    await refreshQueueFromDb();
+    return res.json({ removed, skipped });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || "Bulk delete failed." });
+  }
+});
+
 app.delete("/api/queue/:id", async (req, res) => {
   const id = Number(req.params.id);
   const shouldDeleteFile = String(req.query.deleteFile || "false").toLowerCase() === "true";
-  const item = queue.find((q) => q.id === id);
-  if (!item) return res.status(404).json({ error: "Queue item not found." });
-  if (item.status === "downloading" || item.status === "merging") {
-    return res.status(400).json({ error: "Use cancel for active download." });
-  }
-
-  if (shouldDeleteFile && item.filename) {
-    const safeName = path.basename(item.filename);
-    const filePath = path.join(downloadsDir, safeName);
-    if (fs.existsSync(filePath)) {
-      try {
-        fs.unlinkSync(filePath);
-      } catch (err) {
-        return res.status(500).json({ error: err.message || "Failed to delete associated file." });
-      }
+  const result = await deleteQueueItemRow(id, shouldDeleteFile);
+  if (!result.ok) {
+    if (result.reason === "not_found") {
+      return res.status(404).json({ error: "Queue item not found." });
     }
+    if (result.reason === "active_download") {
+      return res.status(400).json({ error: "Use cancel for active download." });
+    }
+    if (result.reason === "file_delete_failed") {
+      return res.status(500).json({ error: result.message || "Failed to delete associated file." });
+    }
+    return res.status(400).json({ error: "Could not remove item." });
   }
-
-  await runDb("DELETE FROM queue_items WHERE id = ?", [id]);
   await refreshQueueFromDb();
   return res.status(204).send();
 });
+
+app.use("/downloads", express.static(downloadsDir));
+app.use(express.static(path.join(__dirname, "public")));
 
 loadQueue()
   .then(() => {
