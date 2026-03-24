@@ -4,10 +4,9 @@ Browser-based YouTube downloader with quality buttons, MP3 support, a persistent
 
 ## Features
 
-- **Tabs:** **One link** (single URL + Load Options), **Multiple URLs** (bulk list + optional quality chips from the first URL), **YouTube search** (search, tick results, queue as video/MP3 or pick quality).
+- **Tabs:** **One link** (single URL + Load Options) and **Multiple URLs** (bulk list + optional quality chips from the first URL).
 - **Single URL:** Paste a link → **Load Options** → pick a **Video** quality chip or **Audio MP3 (Best)**.
 - **Multiple URLs:** On the **Multiple URLs** tab, paste one URL per line → **Queue all · Video (best)** / **MP3**, or **Load quality options (first URL in list)** then use chips to queue **all lines** at that quality.
-- **YouTube search:** On the **YouTube search** tab, run a query, select videos (or **Select all results**), then **Queue selected** or **Load qualities (first selected)** and use quality chips.
 - **Queue:** Up to **5** concurrent downloads, live progress, **latest items first**.
 - **Bulk actions:** Checkbox on each card, **Select all**, **Remove selected**, **Download selected** (staggered browser downloads for completed files).
 - **Remove:** Per-item or bulk — choose app-only vs **also delete file** on disk.
@@ -56,8 +55,7 @@ npm start
 
 1. **One video:** **One link** tab → paste URL → **Load Options** → choose a quality or MP3.
 2. **Many URLs:** **Multiple URLs** tab → paste lines → **Queue all** or load qualities from the first line, then use chips.
-3. **Search:** **YouTube search** tab → search → tick videos → **Queue selected** (or load qualities, then chips).
-4. Watch the queue; use **Download Only** / **Download selected** when **Completed**; **Remove** / **Cancel** as needed.
+3. Watch the queue; use **Download Only** / **Download selected** when **Completed**; **Remove** / **Cancel** as needed.
 
 ## File naming
 
@@ -80,34 +78,6 @@ MP3:
 | `DELETE` | `/api/queue/:id?deleteFile=true` or `false` | Remove one item |
 | `POST` | `/api/queue/:id/action` | `{ action: "cancel" }` (others may return 400) |
 | `POST` | `/api/formats` | `{ url }` → title + quality list for the UI |
-| `POST` | `/api/search` | `{ q, limit?, duration?, upload_date?, sort_by? }` → `{ results: [...] }` via [YouTube Media Downloader](https://rapidapi.com/DataFanatic/api/youtube-media-downloader) on RapidAPI (`youtube-media-downloader.p.rapidapi.com`, default path **`/v2/search/videos`**). Requires **`RAPIDAPI_KEY`**. |
-
-### YouTube search (RapidAPI)
-
-1. Subscribe to **YouTube Media Downloader** (DataFanatic) on RapidAPI and copy **X-RapidAPI-Key**.
-2. Create a **`.env`** file in the project root (it is gitignored):
-
-```env
-RAPIDAPI_KEY=your-key-here
-```
-
-3. Run **`npm install`** (loads `dotenv`) then **`npm start`**. The server reads `.env` automatically.
-
-Optional env vars:
-
-- **`RAPIDAPI_HOST`** — default `youtube-media-downloader.p.rapidapi.com`
-- **`RAPIDAPI_SEARCH_PATH`** — default `/v2/search/videos` (change only if RapidAPI docs differ)
-
-**Windows (PowerShell) without `.env`:**
-
-```powershell
-$env:RAPIDAPI_KEY = "your-key-here"
-npm start
-```
-
-**Important:** Open the app at **`http://localhost:3000`** (the same process that runs `server.js`). If you open `public/index.html` via Live Server or another port, search calls go to the wrong host and you get HTML instead of JSON.
-
-**Security:** Never commit API keys. Rotate any key that was pasted into chat or committed by mistake.
 
 ## Queue rules
 
