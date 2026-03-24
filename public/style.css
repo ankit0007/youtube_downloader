@@ -1,26 +1,39 @@
 * {
   box-sizing: border-box;
-  font-family: Arial, sans-serif;
+  font-family: "Segoe UI", Arial, sans-serif;
 }
 
 body {
   margin: 0;
-  background: #f4f6fa;
-  color: #222;
+  background: radial-gradient(circle at top, #1f3e86 0%, #0f1a33 45%, #0b1326 100%);
+  color: #eaf1ff;
+  min-height: 100vh;
 }
 
 .container {
-  max-width: 900px;
+  max-width: 1020px;
   margin: 24px auto;
   padding: 20px;
-  background: #fff;
-  border-radius: 10px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+}
+
+.hero-card,
+.queue-section {
+  background: rgba(15, 25, 48, 0.92);
+  border: 1px solid rgba(119, 154, 255, 0.25);
+  border-radius: 16px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.3);
+  padding: 18px;
+  margin-bottom: 16px;
 }
 
 h1,
 h2 {
   margin-top: 0;
+  color: #ffffff;
+}
+
+p {
+  color: #c8d5ff;
 }
 
 .queue-form {
@@ -31,30 +44,29 @@ h2 {
 
 .queue-form input {
   flex: 1;
-  padding: 10px;
-  border: 1px solid #d0d7e2;
+  padding: 12px;
+  border: 1px solid rgba(129, 162, 255, 0.4);
   border-radius: 8px;
+  background: rgba(8, 15, 30, 0.8);
+  color: #f0f5ff;
 }
 
 .queue-form button {
-  padding: 10px 16px;
+  padding: 12px 16px;
   border: 0;
   border-radius: 8px;
-  background: #2d6cf5;
-  color: white;
+  background: linear-gradient(135deg, #4e8cff, #2d6cf5);
+  color: #fff;
   cursor: pointer;
+  font-weight: 600;
 }
 
 .queue-form button:hover {
-  background: #2359ca;
+  filter: brightness(1.1);
 }
 
 .secondary-btn {
-  background: #60738a;
-}
-
-.secondary-btn:hover {
-  background: #4f6074;
+  background: linear-gradient(135deg, #62738f, #4c5f7b);
 }
 
 .option-buttons {
@@ -66,31 +78,26 @@ h2 {
 
 .option-btn {
   padding: 8px 12px;
-  border: 1px solid #cfd8e6;
+  border: 1px solid rgba(125, 158, 255, 0.45);
   border-radius: 999px;
-  background: #f2f6ff;
-  color: #1d3f7a;
+  background: rgba(44, 90, 200, 0.24);
+  color: #eaf2ff;
   cursor: pointer;
   font-size: 13px;
 }
 
 .option-btn:hover {
-  background: #e3ecff;
+  background: rgba(65, 119, 245, 0.42);
 }
 
 .option-btn.mp3 {
-  background: #e6f8eb;
-  color: #1a6a34;
-}
-
-.option-btn.subtitle {
-  background: #fff4e0;
-  color: #7a4a00;
+  background: rgba(36, 168, 88, 0.25);
+  border-color: rgba(95, 235, 154, 0.5);
 }
 
 .status-text {
   min-height: 24px;
-  color: #184db8;
+  color: #8fb5ff;
   font-weight: 600;
 }
 
@@ -101,10 +108,10 @@ h2 {
 }
 
 .queue-item {
-  border: 1px solid #dfe5f0;
+  border: 1px solid rgba(118, 150, 242, 0.35);
   border-radius: 8px;
   padding: 10px;
-  background: #fafcff;
+  background: rgba(20, 32, 63, 0.75);
 }
 
 .queue-top {
@@ -119,12 +126,12 @@ h2 {
 
 .meta {
   font-size: 14px;
-  color: #445;
+  color: #b9cbff;
 }
 
 .progress-wrapper {
   margin-top: 8px;
-  background: #e6ebf4;
+  background: rgba(167, 191, 255, 0.2);
   border-radius: 999px;
   overflow: hidden;
   height: 10px;
@@ -132,7 +139,7 @@ h2 {
 
 .progress-bar {
   height: 10px;
-  background: #2d6cf5;
+  background: linear-gradient(90deg, #45a3ff, #5e6cff);
   width: 0%;
   transition: width 0.3s ease;
 }
@@ -152,27 +159,27 @@ h2 {
 }
 
 .btn-remove {
-  background: #f4d7d7;
-  color: #8c1f1f;
+  background: #f0b5b5;
+  color: #5a1010;
 }
 
 .btn-download {
-  background: #d7f0dc;
-  color: #19602b;
+  background: #bdecca;
+  color: #114e23;
   text-decoration: none;
 }
 
 .btn-pause {
-  background: #ffe7bf;
-  color: #704902;
+  background: #ffe5a4;
+  color: #5d4106;
 }
 
 .btn-resume {
-  background: #d9e9ff;
-  color: #0b3f89;
+  background: #d0e4ff;
+  color: #08367a;
 }
 
 .btn-cancel {
-  background: #f8caca;
-  color: #8f1313;
+  background: #f5b5b5;
+  color: #7a0c0c;
 }
