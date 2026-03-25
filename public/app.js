@@ -102,17 +102,17 @@ function stopQueueRefresh() {
 
 function handleUnauthorized() {
   stopQueueRefresh();
-  setAppVisible(false);
+  setAppVisible(true);
   setRegisterVisible(false);
-  setAuthStatus("Please login to continue.");
-  setMainStatus("Please login first.");
+  setAuthStatus("");
+  setMainStatus("Session reset. Continuing in guest mode.");
 }
 
 function handleLoginRequired(message) {
-  setAppVisible(false);
+  setAppVisible(true);
   setRegisterVisible(false);
-  setAuthStatus(message || "Login required to continue.");
-  setMainStatus(message || "Login required to continue.");
+  setAuthStatus("");
+  setMainStatus(message || "Continuing in guest mode.");
 }
 
 async function authFetch(url, options = {}) {
@@ -930,16 +930,15 @@ async function logout() {
 
 async function startAuthenticatedApp(username, isAdmin) {
   setAppVisible(true);
-  setSessionControls(true);
+  setSessionControls(false);
   if (welcomeUser) {
-    welcomeUser.textContent = username ? `Logged in as: ${username}` : "Logged in";
+    welcomeUser.textContent = "Guest mode";
   }
   setMainStatus("");
   await refreshQueue(true);
   stopQueueRefresh();
   queueRefreshTimer = window.setInterval(refreshQueue, 1500);
-  if (analyticsSection) analyticsSection.classList.remove("hidden");
-  await refreshAnalytics().catch(() => {});
+  if (analyticsSection) analyticsSection.classList.add("hidden");
 }
 
 async function bootstrapAuth() {

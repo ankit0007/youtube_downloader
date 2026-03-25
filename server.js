@@ -1011,17 +1011,6 @@ function scheduleQueueProcessing() {
 
 app.post("/api/queue", async (req, res) => {
   try {
-    if (!req.authUserId) {
-      const usage = await getGuestUsage(req.guestId);
-      if (usage.completedDownloads >= GUEST_FREE_COMPLETED_LIMIT) {
-        return res.status(403).json({
-          code: "login_required",
-          error: `Login required after ${GUEST_FREE_COMPLETED_LIMIT} downloads.`,
-          limit: GUEST_FREE_COMPLETED_LIMIT,
-          completedDownloads: usage.completedDownloads
-        });
-      }
-    }
     const { url, qualityPreference, downloadType } = req.body || {};
     const r = await insertQueueItemIfEligible.call(
       { userId: req.authUserId || 0, guestId: req.guestId || "" },
@@ -1056,17 +1045,6 @@ app.post("/api/queue/bulk", async (req, res) => {
     }
     if (rawItems.length > MAX_BULK_QUEUE_ADD) {
       return res.status(400).json({ error: `Too many items (max ${MAX_BULK_QUEUE_ADD} per request).` });
-    }
-    if (!req.authUserId) {
-      const usage = await getGuestUsage(req.guestId);
-      if (usage.completedDownloads >= GUEST_FREE_COMPLETED_LIMIT) {
-        return res.status(403).json({
-          code: "login_required",
-          error: `Login required after ${GUEST_FREE_COMPLETED_LIMIT} downloads.`,
-          limit: GUEST_FREE_COMPLETED_LIMIT,
-          completedDownloads: usage.completedDownloads
-        });
-      }
     }
     const created = [];
     const errors = [];
